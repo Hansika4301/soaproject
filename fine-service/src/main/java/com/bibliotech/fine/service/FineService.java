@@ -1,0 +1,112 @@
+
+package com.bibliotech.fine.service;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.bibliotech.fine.dto.FineCalculationRequest;
+import com.bibliotech.fine.entity.Fine;
+import com.bibliotech.fine.repository.FineRepository;
+
+@Service
+public class FineService {
+
+    private final FineRepository repository;
+
+    public FineService(FineRepository repository) {
+        this.repository = repository;
+    }
+
+    @Transactional
+    public Fine calculate(FineCalculationRequest request) {
+
+        if (request.getDueDate() == null ||
+            request.getReturnDate() == null ||
+            request.getDailyRate() == null) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST, "Required fields cannot be null");
+        }
+
+        if (request.getReturnDate().isBefore(request.getDueDate())) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST, "Invalid return date");
+        }
+
+        if (request.getDailyRate().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST, "Daily rate must be positive");
+        }
+
+        if (repository.findByRentalId(request.getRentalId()).isPresent()) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT, "Fine already exists for this rental");
+        }
+
+        long overdueDays = Math.max(0,
+            ChronoUnit.DAYS.between(
+                request.getDueDate(),
+                request.getReturnDate()
+            )
+        );
+
+        BigDecimal amount = request.getDailyRate()
+            .multiply(BigDecimal.valueOf(overdueDays))
+            .setScale(2, RoundingMode.HALF_UP);
+
+        Fine fine = new Fine();
+
+        fine.setRentalId(request.getRentalId());
+        fine.setUserId(request.getUserId());
+        fine.setBookId(request.getBookId());
+        fine.setDueDate(request.getDueDate());
+        fine.setReturnDate(request.getReturnDate());
+        fine.setOverdueDays(overdueDays);
+        fine.setDailyRate(request.getDailyRate());
+        fine.setAmount(amount);
+        fine.setStatus(amount.signum() > 0 ? "UNPAID" : "NO_FINE");
+
+        return repository.save(fine);
+    }
+
+    public List<Fine> findAll() {
+        return repository.findAll();
+    }
+
+    public Fine findById(Long id) {
+        return repository.findById(id)
+            .orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.NOT_FOUND, "Fine not found"));
+    }
+
+    public Fine findByRentalId(Long rentalId) {
+        return repository.findByRentalId(rentalId)
+            .orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.NOT_FOUND, "Fine not found for rental"));
+    }
+
+    @Transactional
+    public Fine markPaid(Long id) {
+        Fine fine = findById(id);
+
+        if (fine.getStatus().equals("PAID")) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT, "Fine is already paid");
+        }
+
+        fine.setStatus("PAID");
+        return repository.save(fine);
+    }
+
+    @Transactional
+    public void delete(Long id) {
+        Fine fine = findById(id);
+        repository.delete(fine);
+    }
+}

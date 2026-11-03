@@ -1,0 +1,13 @@
+spring.application.name=FINE-SERVICE
+server.port=${PORT:8084}
+
+eureka.client.service-url.defaultZone=${EUREKA_URL:http://localhost:8761/eureka/}
+eureka.client.register-with-eureka=true
+eureka.client.fetch-registry=true
+
+spring.datasource.url=${DB_URL:jdbc:postgresql://localhost:5432/fine_db}
+spring.datasource.username=postgres
+spring.datasource.password=Hanska@2007
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.format_sql=true
